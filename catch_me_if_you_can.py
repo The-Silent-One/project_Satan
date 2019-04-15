@@ -100,8 +100,8 @@ class Cell():
     nb_cells_Y=int((4*y/5)/space)
     current_cell_x,current_cell_y=0,0
     pos_x,pos_y=0,0 #useless
-    draw=None
-    def __init__(self,win,cell_x,cell_y):
+    
+    def __init__(self,win,cell_x,cell_y,draw=True):
         
         if(cell_x<self.nb_cells_X):
             self.current_cell_x=cell_x
@@ -122,7 +122,12 @@ class Cell():
                           Point(self.pos_x+space,self.pos_y+space),
                           Point(self.pos_x,self.pos_y+space),)
         
-        self.draw.draw(win)
+        self.f = 0 #new
+        self.g = 0
+        self.h = 0
+
+        if(draw):
+            self.draw.draw(win)
         
     def __eq__(self,other):
         return (self.current_cell_x==other.current_cell_x) and(
@@ -130,6 +135,18 @@ class Cell():
 
     def destroy(self):
         self.draw.undraw()
+        
+##depricated , not needed
+##    def fitness_h(self,g):
+##        return ((self.current_cell_x-g.current_cell_x)**2+
+##                (self.current_cell_y-g.current_cell_y)**2)
+##    
+##    def fitness_g(self,w):
+##        return ((self.current_cell_x-w.initial_cell_x)**2+
+##                (self.current_cell_y-w.initial_cell_y)**2)
+##
+##    def fitness(self,w,g):
+##        return self.fintess_h(g)+self.fitness_g(w)
     
 class Wheel(Cell):
     color="#aaff7f"
@@ -159,11 +176,7 @@ class Wheel(Cell):
         self.current_cell_y=self.current_cell_y-1
         self.draw.move(0,-space)
         sleep(1/speed)
-
-    def fitness(self,g):
-        return ((self.current_cell_x-g.current_cell_x)**2+
-    (self.current_cell_y-g.current_cell_y)**2)
-
+    
     def move_t(self,t):
         for i in t:
             if(i=="L"):
@@ -213,90 +226,182 @@ def build_screen(x,y):
         if(wait):
             sleep(0.1/speed)
     return win,grid
+
+class Node(Cell):
     
-def new_move(grid,w,g,f,list_b=[],old_mv=''):
-    if(f==-1):
-        f=w.fitness(g)
-    if(w==g):
-        print('found')
-        return []
-    else:
-        d=['L','U','R','D']
-        w.moveL_one()
-        if(blocked(grid,w,list_b)):
-            d.pop(0)
-        w.moveR_one()
-        
-        w.moveU_one()
-        if(blocked(grid,w,list_b)):
-            d.pop(len(d)-3)
-        w.moveD_one()
-        
-        w.moveR_one()
-        if(blocked(grid,w,list_b)):
-            d.pop(len(d)-2)
-        w.moveL_one()
-        
-        w.moveD_one()
-        if(blocked(grid,w,list_b)):
-            d.pop(len(d)-1)
-        w.moveU_one()
+    color="#e51647"
+    draw = False
 
-        if(not(old_mv=='')):
-            d=inv_mv(d,old_mv)
+    def __init__(self,win,cell_x,cell_y,parent=None):
+        Cell.__init__(self,win,cell_x,cell_y,self.draw)
+        self.parent = parent
+        self.draw.setFill(self.color)
 
-##        print(d)
-        if(len(d)==0):
-            print("Dafaq")
-            return []
-        elif(len(d)==1):
-            unit_move(w,g,f,d[0],True)
-            return d+new_move(grid,w,g,f,list_b,d[0])
-        for i in d:
-            tmp,x = unit_move(w,g,f,i)
-##                print(tmp)
-            if(len(tmp)==1):
-                return tmp+new_move(grid,w,g,x,list_b,tmp[0])
-        print('wat')
-        return []
+    def show(self,win):
+        self.draw.draw(win)
 
-def inv_mv(d,old_mv):
-    if(old_mv=='L' and 'R' in d):
-        d.remove('R')
-    elif(old_mv=='U' and 'D'in d):
-        d.remove('D')
-    elif(old_mv=='R' and 'L' in d):
-        d.remove('L')
-    elif(old_mv=='D' and 'U' in d):
-        d.remove('U')
-    return d
-        
-def unit_move(w,g,f,d,ignore=False):
+def show_nodes(nodes,win):
+    for n in nodes:
+        n.show(win)
+
+def conv_path(path):
     
-    if(d=='L'):
-        w.moveL_one()
-    elif(d=='U'):
-        w.moveU_one()
-    elif(d=='R'):
-        w.moveR_one()
-    elif(d=='D'):
-        w.moveD_one()
-        
-    x=w.fitness(g)
-##    print("f = {0}".format(f))
-##    print("x = {0}".format(x))
-    if(ignore or x<f):
-        return [d],x
-    else:
-        if(d=='L'):
-            w.moveR_one()
-        elif(d=='U'):
-            w.moveD_one()
-        elif(d=='R'):
-            w.moveL_one()
-        elif(d=='D'):
-            w.moveU_one()
-        return [],0
+    res=list()
+    for index in range(len(path)-1):
+        i = path[index]
+        j = path[index+1]
+        x = j[0]-i[0]
+        y = j[1]-i[1]
+        if(x==1):
+            res.append("R")
+        elif(x==-1):
+            res.append("L")
+        elif(y==1):
+            res.append("D")
+        elif(y==-1):
+            res.append("U")
+
+    return res
+
+def move(win,grid,w,g,list_b=[]): #based on Astar
+
+    start_node = Node(win,w.current_cell_x,w.current_cell_y)
+
+    end_node = Node(win,g.current_cell_x,g.current_cell_y)
+
+    open_nodes = list()
+    closed_nodes = list()
+    open_nodes.append(start_node)
+
+    while(len(open_nodes)>0):
+        current_node = open_nodes[0]
+        current_index = 0
+
+        for i,item in enumerate(open_nodes):
+            if (item.f < current_node.f):
+                current_node = item
+                current_index = i
+
+        closed_nodes.append(open_nodes.pop(current_index))
+
+        if( current_node == end_node):
+            path = []
+            c = current_node
+            while c is not None:
+                path.append([c.current_cell_x,c.current_cell_y])
+                c.show(win)
+                c = c.parent
+            return conv_path(path[::-1])
+
+        children = []
+        for n in [(0,-1),(0,1),(-1,0),(1,0)]:
+            node_p = Node(win,current_node.current_cell_x+n[0],
+                      current_node.current_cell_y+n[1],current_node)
+
+            if(blocked(grid,node_p,list_b)):
+                continue
+
+            children.append(node_p)
+
+        for child in children:
+
+            if child in closed_nodes :
+                continue
+
+            child.g = current_node.g +1
+            child.h = ((child.current_cell_x - end_node.current_cell_x)**2+
+                       (child.current_cell_y - end_node.current_cell_y)**2)
+            child.f = child.g + child.h
+
+            for n in open_nodes:
+                if (child == n and child.g > n.g ):
+                    continue
+
+            open_nodes.append(child)
+                    
+##def new_move(grid,w,g,f,list_b=[],old_mv=''):
+##    if(f==-1):
+##        f=w.fitness(g)
+##    if(w==g):
+##        print('found')
+##        return []
+##    else:
+##        d=['L','U','R','D']
+##        w.moveL_one()
+##        if(blocked(grid,w,list_b)):
+##            d.pop(0)
+##        w.moveR_one()
+##        
+##        w.moveU_one()
+##        if(blocked(grid,w,list_b)):
+##            d.pop(len(d)-3)
+##        w.moveD_one()
+##        
+##        w.moveR_one()
+##        if(blocked(grid,w,list_b)):
+##            d.pop(len(d)-2)
+##        w.moveL_one()
+##        
+##        w.moveD_one()
+##        if(blocked(grid,w,list_b)):
+##            d.pop(len(d)-1)
+##        w.moveU_one()
+##
+##        if(not(old_mv=='')):
+##            d=inv_mv(d,old_mv)
+##
+####        print(d)
+##        if(len(d)==0):
+##            print("Dafaq")
+##            return []
+##        elif(len(d)==1):
+##            unit_move(w,g,f,d[0],True)
+##            return d+new_move(grid,w,g,f,list_b,d[0])
+##        for i in d:
+##            tmp,x = unit_move(w,g,f,i)
+####                print(tmp)
+##            if(len(tmp)==1):
+##                return tmp+new_move(grid,w,g,x,list_b,tmp[0])
+##        print('wat')
+##        return []
+##
+##def inv_mv(d,old_mv):
+##    if(old_mv=='L' and 'R' in d):
+##        d.remove('R')
+##    elif(old_mv=='U' and 'D'in d):
+##        d.remove('D')
+##    elif(old_mv=='R' and 'L' in d):
+##        d.remove('L')
+##    elif(old_mv=='D' and 'U' in d):
+##        d.remove('U')
+##    return d
+##        
+##def unit_move(w,g,f,d,ignore=False):
+##    
+##    if(d=='L'):
+##        w.moveL_one()
+##    elif(d=='U'):
+##        w.moveU_one()
+##    elif(d=='R'):
+##        w.moveR_one()
+##    elif(d=='D'):
+##        w.moveD_one()
+##        
+##    x=w.fitness(g)
+####    print("f = {0}".format(f))
+####    print("x = {0}".format(x))
+##    if(ignore or x<f):
+##        return [d],x
+##    else:
+##        if(d=='L'):
+##            w.moveR_one()
+##        elif(d=='U'):
+##            w.moveD_one()
+##        elif(d=='R'):
+##            w.moveL_one()
+##        elif(d=='D'):
+##            w.moveU_one()
+##        return [],0
     
 def blocked(grid,w,list_b):
     p = list(w.draw.points)[0]
@@ -395,12 +500,12 @@ def main():
 ##        list_b.append(Block(win,i+1,i))
     win = build()
     win.getMouse()
-    play_music("build")
+    #play_music("build")
     list_b = map_with_blocks(win)
     g = Goal(win,39,0)
     w = Wheel(win,9,19)
     win.getMouse()
-    t=new_move(grid,w,g,-1,list_b)
+    t=move(win,grid,w,g,list_b)
     print(t)
     w.get_back(win)
     win.getMouse()
